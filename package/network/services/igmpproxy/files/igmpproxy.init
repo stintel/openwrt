@@ -4,7 +4,7 @@
 START=99
 USE_PROCD=1
 PROG=/usr/sbin/igmpproxy
-CONFIGFILE=/var/etc/igmpproxy.conf
+CONFIGFILE=/tmp/etc/igmpproxy.conf
 
 igmp_header() {
 	local quickleave verbose
@@ -15,11 +15,11 @@ igmp_header() {
 	[ $verbose = "2" ] && logopts="-v"
 	[ $verbose = "3" ] && logopts="-v -v"
 
-	mkdir -p /var/etc
-	rm -f /var/etc/igmpproxy.conf
-	[ $quickleave -gt 0 ] && echo "quickleave" >> /var/etc/igmpproxy.conf
+	mkdir -p /tmp/etc
+	rm -f /tmp/etc/igmpproxy.conf
+	[ $quickleave -gt 0 ] && echo "quickleave" >> /tmp/etc/igmpproxy.conf
 
-	[ -L /etc/igmpproxy.conf ] || ln -nsf /var/etc/igmpproxy.conf /etc/igmpproxy.conf
+	[ -L /etc/igmpproxy.conf ] || ln -nsf /tmp/etc/igmpproxy.conf /etc/igmpproxy.conf
 }
 
 igmp_add_phyint() {
@@ -45,12 +45,12 @@ igmp_add_phyint() {
 
 	[[ "$direction" = "upstream" ]] && has_upstream=1
 
-	echo -e "\nphyint $device $direction ratelimit 0 threshold 1" >> /var/etc/igmpproxy.conf
+	echo -e "\nphyint $device $direction ratelimit 0 threshold 1" >> /tmp/etc/igmpproxy.conf
 
 	if [ -n "$altnets" ]; then
 		local altnet
 		for altnet in $altnets; do
-			echo -e "\taltnet $altnet" >> /var/etc/igmpproxy.conf
+			echo -e "\taltnet $altnet" >> /tmp/etc/igmpproxy.conf
 		done
 	fi
 }
