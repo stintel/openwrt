@@ -28,18 +28,18 @@ smb_header() {
 	config_get description $1 description "Samba on ${hostname:-OpenWrt}"
 	config_get charset     $1 charset     "UTF-8"
 
-	mkdir -p /var/etc
+	mkdir -p /tmp/etc
 	sed -e "s#|NAME|#$name#g" \
 	    -e "s#|WORKGROUP|#$workgroup#g" \
 	    -e "s#|DESCRIPTION|#$description#g" \
 	    -e "s#|INTERFACES|#$interfaces#g" \
 	    -e "s#|CHARSET|#$charset#g" \
-	    /etc/samba/smb.conf.template > /var/etc/smb.conf
+	    /etc/samba/smb.conf.template > /tmp/etc/smb.conf
 
 	local homes
 	config_get_bool homes $1 homes 0
 	[ $homes -gt 0 ] && {
-		cat <<EOT >> /var/etc/smb.conf
+		cat <<EOT >> /tmp/etc/smb.conf
 
 [homes]
 	comment     = Home Directories
@@ -49,7 +49,7 @@ smb_header() {
 EOT
 	}
 
-	[ -L /etc/samba/smb.conf ] || ln -nsf /var/etc/smb.conf /etc/samba/smb.conf
+	[ -L /etc/samba/smb.conf ] || ln -nsf /tmp/etc/smb.conf /etc/samba/smb.conf
 }
 
 smb_add_share() {
@@ -73,13 +73,13 @@ smb_add_share() {
 
 	[ -z "$name" -o -z "$path" ] && return
 
-	echo -e "\n[$name]\n\tpath = $path" >> /var/etc/smb.conf
-	[ -n "$users" ] && echo -e "\tvalid users = $users" >> /var/etc/smb.conf
-	[ -n "$read_only" ] && echo -e "\tread only = $read_only" >> /var/etc/smb.conf
-	[ -n "$guest_ok" ] && echo -e "\tguest ok = $guest_ok" >> /var/etc/smb.conf
-	[ -n "$create_mask" ] && echo -e "\tcreate mask = $create_mask" >> /var/etc/smb.conf
-	[ -n "$dir_mask" ] && echo -e "\tdirectory mask = $dir_mask" >> /var/etc/smb.conf
-	[ -n "$browseable" ] && echo -e "\tbrowseable = $browseable" >> /var/etc/smb.conf
+	echo -e "\n[$name]\n\tpath = $path" >> /tmp/etc/smb.conf
+	[ -n "$users" ] && echo -e "\tvalid users = $users" >> /tmp/etc/smb.conf
+	[ -n "$read_only" ] && echo -e "\tread only = $read_only" >> /tmp/etc/smb.conf
+	[ -n "$guest_ok" ] && echo -e "\tguest ok = $guest_ok" >> /tmp/etc/smb.conf
+	[ -n "$create_mask" ] && echo -e "\tcreate mask = $create_mask" >> /tmp/etc/smb.conf
+	[ -n "$dir_mask" ] && echo -e "\tdirectory mask = $dir_mask" >> /tmp/etc/smb.conf
+	[ -n "$browseable" ] && echo -e "\tbrowseable = $browseable" >> /tmp/etc/smb.conf
 }
 
 init_config() {
