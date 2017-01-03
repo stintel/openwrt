@@ -108,7 +108,6 @@ start_instance() {
 		return
 	fi
 
-	[ ! -d "/tmp/etc" ] && mkdir -p "/tmp/etc"
 	[ -f "/tmp/etc/openvpn-$s.conf" ] && rm "/tmp/etc/openvpn-$s.conf"
 
 	append_bools "$s" $OPENVPN_BOOLS
