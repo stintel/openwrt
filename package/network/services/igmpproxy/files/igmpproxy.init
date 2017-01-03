@@ -15,7 +15,6 @@ igmp_header() {
 	[ $verbose = "2" ] && logopts="-v"
 	[ $verbose = "3" ] && logopts="-v -v"
 
-	mkdir -p /tmp/etc
 	rm -f /tmp/etc/igmpproxy.conf
 	[ $quickleave -gt 0 ] && echo "quickleave" >> /tmp/etc/igmpproxy.conf
 
