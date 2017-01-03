@@ -24,7 +24,7 @@ append_param() {
 		*_*_*)   v=${v%%_*}-${v#*_}; v=${v%%_*}-${v#*_} ;;
 		*_*)     v=${v%%_*}-${v#*_} ;;
 	esac
-	echo -n "$v" >> "/var/etc/openvpn-$s.conf"
+	echo -n "$v" >> "/tmp/etc/openvpn-$s.conf"
 	return 0
 }
 
@@ -32,7 +32,7 @@ append_bools() {
 	local p; local v; local s="$1"; shift
 	for p in $*; do
 		config_get_bool v "$s" "$p"
-		[ "$v" = 1 ] && append_param "$s" "$p" && echo >> "/var/etc/openvpn-$s.conf"
+		[ "$v" = 1 ] && append_param "$s" "$p" && echo >> "/tmp/etc/openvpn-$s.conf"
 	done
 }
 
@@ -42,8 +42,8 @@ append_params() {
 		config_get v "$s" "$p"
 		IFS="$LIST_SEP"
 		for v in $v; do
-			[ -n "$v" ] && [ "$p" != "push" ] && append_param "$s" "$p" && echo " $v" >> "/var/etc/openvpn-$s.conf"
-			[ -n "$v" ] && [ "$p" == "push" ] && append_param "$s" "$p" && echo " \"$v\"" >> "/var/etc/openvpn-$s.conf"
+			[ -n "$v" ] && [ "$p" != "push" ] && append_param "$s" "$p" && echo " $v" >> "/tmp/etc/openvpn-$s.conf"
+			[ -n "$v" ] && [ "$p" == "push" ] && append_param "$s" "$p" && echo " \"$v\"" >> "/tmp/etc/openvpn-$s.conf"
 		done
 		unset IFS
 	done
@@ -108,14 +108,14 @@ start_instance() {
 		return
 	fi
 
-	[ ! -d "/var/etc" ] && mkdir -p "/var/etc"
-	[ -f "/var/etc/openvpn-$s.conf" ] && rm "/var/etc/openvpn-$s.conf"
+	[ ! -d "/tmp/etc" ] && mkdir -p "/tmp/etc"
+	[ -f "/tmp/etc/openvpn-$s.conf" ] && rm "/tmp/etc/openvpn-$s.conf"
 
 	append_bools "$s" $OPENVPN_BOOLS
 	append_params "$s" $OPENVPN_PARAMS
 	append_list "$s" $OPENVPN_LIST
 
-	openvpn_add_instance "$s" "/var/etc" "openvpn-$s.conf"
+	openvpn_add_instance "$s" "/tmp/etc" "openvpn-$s.conf"
 }
 
 start_service() {
