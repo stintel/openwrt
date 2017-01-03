@@ -100,8 +100,6 @@ start_instance() {
 		return 1
 	}
 
-	[ ! -d "/var/run" ] && mkdir -p "/var/run"
-
 	if [ ! -z "$config" ]; then
 		append UCI_STARTED "$config" "$LIST_SEP"
 		openvpn_add_instance "$s" "${config%/*}" "$config"
