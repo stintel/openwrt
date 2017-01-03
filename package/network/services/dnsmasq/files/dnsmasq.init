@@ -11,11 +11,11 @@ ADD_LOCAL_HOSTNAME=1
 ADD_WAN_FQDN=0
 ADD_LOCAL_FQDN=""
 
-BASECONFIGFILE="/var/etc/dnsmasq.conf"
+BASECONFIGFILE="/tmp/etc/dnsmasq.conf"
 BASEHOSTFILE="/tmp/hosts/dhcp"
 TRUSTANCHORSFILE="/usr/share/dnsmasq/trust-anchors.conf"
-TIMEVALIDFILE="/var/state/dnsmasqsec"
-BASEDHCPSTAMPFILE="/var/run/dnsmasq"
+TIMEVALIDFILE="/tmp/state/dnsmasqsec"
+BASEDHCPSTAMPFILE="/tmp/run/dnsmasq"
 DHCPBOGUSHOSTNAMEFILE="/usr/share/dnsmasq/dhcpbogushostname.conf"
 RFC6761FILE="/usr/share/dnsmasq/rfc6761.conf"
 DHCPSCRIPT="/usr/lib/dnsmasq/dhcp-script.sh"
