@@ -280,4 +280,9 @@ menu "Target Images"
 		  it will be mounted by PARTUUID which makes the kernel find the
 		  appropriate disk automatically.
 
+	config TARGET_ROOTFS_LN_VAR_TMP
+		bool "Symlink /var to /tmp"
+		default y
+		help
+		  Make /var a symlink to /tmp.
 endmenu
