@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 define Device/fsl_T4240RDB
   DEVICE_VENDOR := NXP
   DEVICE_MODEL := T4240RDB
@@ -27,6 +28,21 @@ define Device/fsl_T4240RDB
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
 endef
 TARGET_DEVICES += fsl_T4240RDB
+
+define Device/watchguard_firebox-m200
+  DEVICE_VENDOR := WatchGuard
+  DEVICE_MODEL := Firebox M200
+  DEVICE_DTS_DIR := $(DTS_DIR)/fsl
+  DEVICE_PACKAGES := \
+	kmod-hwmon-w83793 kmod-ptp-qoriq kmod-rtc-rs5c372a kmod-tpm-i2c-atmel
+  KERNEL := kernel-bin | gzip | fit gzip $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
+  KERNEL_SUFFIX := -fit-uImage.itb
+  IMAGES := sdcard.img.gz sysupgrade.img.gz
+  IMAGE/sysupgrade.img.gz :=  sdcard-img | gzip | append-metadata
+  IMAGE/sdcard.img.gz := sdcard-img | gzip
+endef
+
+TARGET_DEVICES += watchguard_firebox-m200
 
 define Device/watchguard_firebox-m300
   DEVICE_VENDOR := WatchGuard
