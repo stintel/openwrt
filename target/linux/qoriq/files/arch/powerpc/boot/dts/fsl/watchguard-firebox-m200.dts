@@ -39,17 +39,70 @@
 	model = "WatchGuard Firebox M200";
 	compatible = "watchguard,firebox-m200", "fsl,T1042RDB_PI";
 
+	aliases {
+		/delete-property/ ethernet0;
+		/delete-property/ ethernet1;
+		/delete-property/ ethernet2;
+		/delete-property/ ethernet3;
+		/delete-property/ ethernet4;
+
+		ethernet0 = &enet2;
+		ethernet1 = &enet0;
+		ethernet2 = &enet1;
+	};
+
+};
+
+&soc {
+/include/ "qoriq-fman3-0-1g-2.dtsi"
 };
 
 #include "t1040si-post.dtsi"
 #include "watchguard-firebox-mx00-ifc.dtsi"
 
-/ {
+&fman0 {
+	// ethernet@e6000 and ethernet@e8000 are defined in t104xrdb.dtsi
+	// remove these nodes to fix the interface order
+	/delete-node/ ethernet@e6000;
+	/delete-node/ ethernet@e8000;
+};
 
-	localbus@ffe124000 {
-		/* one of these causes serious havoc, didn't happen in m200 branch */
-		/* likely due to qoriq having more kernel options enabled, disable for now */
-		/delete-node/ nor@0,0;
-		/delete-node/ nand@2,0;
+// ethernet @ e4000 = eth0 = phy@0
+&enet2 {
+	phy-mode = "rgmii";
+	phy-handle = <&phy0>;
+};
+
+// ethernet @ e0000 = eth1 = phy@1
+&enet0 {
+	phy-mode = "sgmii";
+	phy-handle = <&phy1>;
+};
+
+// ethernet @ e2000 = eth2 = phy@2
+&enet1 {
+	phy-mode = "gmii";
+	phy-handle = <&phy2>;
+};
+
+
+&mdio0 {
+	// m200 ethernet port 0
+	phy0: ethernet-phy@0 {
+		reg = <0x00>;
+	};
+
+	// m200 ethernet port 1
+	phy1: ethernet-phy@1 {
+		reg = <0x01>;
+	};
+
+	// m200 ethernet port 2
+	phy2: ethernet-phy@2 {
+		reg = <0x02>;
+	};
+
+	phy3: ethernet-phy@3 {
+		reg = <0x03>;
 	};
 };
