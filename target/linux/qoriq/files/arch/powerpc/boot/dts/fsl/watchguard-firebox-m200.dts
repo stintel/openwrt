@@ -66,6 +66,7 @@
 &enet2 {
 	phy-mode = "sgmii";
 	phy-handle = <&phy0>;
+	fsl,fman-ports = <&fman0_rx_0x0a &fman0_tx_0x2a>;
 };
 
 // ethernet @ e0000 = eth1 = phy@1
@@ -210,7 +211,7 @@
 				reg = <6>;
 				label = "cpu";
 				ethernet = <&enet3>;
-				phy-mode = "rgmii-rxid";
+				phy-mode = "rgmii-txid";
 
 				fixed-link {
 					speed = <1000>;
