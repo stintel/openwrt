@@ -66,7 +66,7 @@
 &enet2 {
 	phy-mode = "sgmii";
 	phy-handle = <&phy0>;
-	fsl,fman-ports = <&fman0_rx_0x0a &fman0_tx_0x2a>;
+	//fsl,fman-ports = <&fman0_rx_0x0a &fman0_tx_0x2a>;
 };
 
 // ethernet @ e0000 = eth1 = phy@1
@@ -98,7 +98,6 @@
 		full-duplex;
 	};
 };
-
 
 &mdio0 {
 	compatible = "fsl,fman-memac-mdio";
@@ -197,7 +196,7 @@
 
 				reg = "<5>";
 				label = "cpu";
-				ethernet = <&enet4>;
+				ethernet = <&enet3>;
 				phy-mode = "rgmii-id";
 
 				fixed-link {
@@ -210,8 +209,8 @@
 				//status = "disabled";
 				reg = <6>;
 				label = "cpu";
-				ethernet = <&enet3>;
-				phy-mode = "rgmii-txid";
+				ethernet = <&enet4>;
+				phy-mode = "rgmii";
 
 				fixed-link {
 					speed = <1000>;
