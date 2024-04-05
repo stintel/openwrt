@@ -23,6 +23,13 @@ case "$FIRMWARE" in
 		;;
 	esac
 	;;
+"mediatek/mt7986_eeprom_mt7976_dual.bin")
+	case "$board" in
+	tplink,eap683-lr)
+		caldata_from_file_ubifs "factory" "ubi_factory_data" "radio" 0x0 0x1000
+		;;
+	esac
+	;;
 *)
 	exit 1
 	;;
