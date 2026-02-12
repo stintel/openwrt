@@ -69,7 +69,7 @@
 
 // ethernet @ e4000 = eth0 = phy@0
 &enet2 {
-	phy-mode = "rgmii";
+	phy-mode = "sgmii";
 	phy-handle = <&phy0>;
 };
 
