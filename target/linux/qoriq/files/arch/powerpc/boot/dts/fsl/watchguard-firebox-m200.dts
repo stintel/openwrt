@@ -55,10 +55,6 @@
 
 };
 
-&soc {
-/include/ "qoriq-fman3-0-1g-2.dtsi"
-};
-
 #include "t1040si-post.dtsi"
 #include "watchguard-firebox-mx00-ifc.dtsi"
 
@@ -192,9 +188,8 @@
 			// OEM bootlog suggests multiple ports are attached to switch
 			// Keep this until OEM supplies GPL sources
 			port@5 {
-				status = "disabled";
-
-				reg = "<5>";
+				//status = "disabled";
+				reg = <5>;
 				label = "cpu";
 				ethernet = <&enet4>;
 				phy-mode = "rgmii-id";
@@ -206,11 +201,11 @@
 			};
 
 			port@6 {
-				//status = "disabled";
+				status = "disabled";
 				reg = <6>;
 				label = "cpu";
 				ethernet = <&enet3>;
-				phy-mode = "rgmii-rxid";
+				phy-mode = "rgmii-id";
 
 				fixed-link {
 					speed = <1000>;
