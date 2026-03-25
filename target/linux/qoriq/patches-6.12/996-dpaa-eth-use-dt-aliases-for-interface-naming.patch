@@ -1,0 +1,18 @@
+--- a/drivers/net/ethernet/freescale/dpaa/dpaa_eth.c	2026-03-25 14:17:49.544084848 +0200
++++ b/drivers/net/ethernet/freescale/dpaa/dpaa_eth.c	2026-03-25 14:18:47.209513510 +0200
+@@ -3338,6 +3338,15 @@
+ 	SET_NETDEV_DEV(net_dev, dev->parent);
+ 	dev_set_drvdata(dev, net_dev);
+ 
++	/* Use DT aliases for deterministic interface naming */
++	{
++		struct device_node *mac_np = dev->parent->of_node;
++		int alias_id = of_alias_get_id(mac_np, "ethernet");
++
++		if (alias_id >= 0)
++			snprintf(net_dev->name, IFNAMSIZ, "eth%d", alias_id);
++	}
++
+ 	priv = netdev_priv(net_dev);
+ 	priv->net_dev = net_dev;
+ 
