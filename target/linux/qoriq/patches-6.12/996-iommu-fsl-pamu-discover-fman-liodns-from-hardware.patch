@@ -1,0 +1,118 @@
+--- a/drivers/iommu/fsl_pamu.c	2026-03-25 16:21:03.077261322 +0200
++++ b/drivers/iommu/fsl_pamu.c	2026-03-25 17:09:44.375693139 +0200
+@@ -454,6 +454,106 @@
+ 	return 0;
+ }
+ 
++/*
++ * FMan LIODNs are assigned by the bootloader and stored in FMan hardware
++ * registers, not in the device tree. The DT-based setup_liodns() path
++ * only handles fsl,liodn entries and therefore never creates PAACE entries
++ * for FMan ports. Without valid PAACEs, FMan DMA transactions are blocked
++ * by PAMU on platforms where FMan is behind an active (non-bypassed) PAMU
++ * instance (e.g. T1040/T1042).
++ *
++ * Discover FMan LIODNs from the DMA Port LIODN Register (FMDMPLR, base)
++ * and BMI Port LIODN Offset Register (FMBM_SPLIODN, per-port offset),
++ * then install identity-mapped PAACEs with OMI_FMAN so that FMan DMA
++ * operates correctly through PAMU.
++ *
++ * Register references (QorIQ FMan Block Guide):
++ *   FMDMPLR:      FMan + 0xC2060, 32 regs, two 12-bit LIODN bases each
++ *   FMBM_SPLIODN: FMan + 0x80304, 63 regs, per-port LIODN offset
++ */
++#define FMAN_DMA_PLR_OFFSET	0x000C2060	/* FMDMPLR[0] */
++#define FMAN_BMI_SPLIODN_OFFSET	0x00080304	/* FMBM_SPLIODN[0] */
++#define FMAN_DMA_LIODN_SHIFT	16
++#define FMAN_DMA_LIODN_MASK	0x00000FFF
++#define FMAN_NUM_PORTS		64
++
++static void setup_fman_liodn(int liodn)
++{
++	struct paace *ppaace;
++
++	if (liodn >= PAACE_NUMBER_ENTRIES) {
++		pr_debug("FMan LIODN %d exceeds PAACE table size\n", liodn);
++		return;
++	}
++
++	ppaace = pamu_get_ppaace(liodn);
++	pamu_init_ppaace(ppaace);
++	/* window size is 2^(WSE+1) bytes */
++	set_bf(ppaace->addr_bitfields, PPAACE_AF_WSE, 35);
++	ppaace->wbah = 0;
++	set_bf(ppaace->addr_bitfields, PPAACE_AF_WBAL, 0);
++	set_bf(ppaace->impl_attr, PAACE_IA_ATM, PAACE_ATM_NO_XLATE);
++	set_bf(ppaace->addr_bitfields, PAACE_AF_AP, PAACE_AP_PERMS_ALL);
++	/* Use the FMan operation mapping for correct DMA behaviour */
++	set_bf(ppaace->impl_attr, PAACE_IA_OTM, PAACE_OTM_INDEXED);
++	ppaace->op_encode.index_ot.omi = OMI_FMAN;
++	mb();
++	pamu_enable_liodn(liodn);
++}
++
++static void setup_fman_liodns(void)
++{
++	struct device_node *fman_node = NULL;
++	void __iomem *base;
++	unsigned long seen[BITS_TO_LONGS(PAACE_NUMBER_ENTRIES)];
++	int i;
++
++	memset(seen, 0, sizeof(seen));
++
++	for_each_compatible_node(fman_node, NULL, "fsl,fman") {
++		/* Skip if bootloader already provided fsl,liodn */
++		if (of_property_present(fman_node, "fsl,liodn"))
++			continue;
++
++		base = of_iomap(fman_node, 0);
++		if (!base)
++			continue;
++
++		/* Port IDs 1..63 (port 0 does not exist) */
++		for (i = 1; i < FMAN_NUM_PORTS; i++) {
++			u32 plr, offset, liodn_base, liodn;
++
++			offset = ioread32be(base + FMAN_BMI_SPLIODN_OFFSET +
++					    (i - 1) * 4);
++
++			plr = ioread32be(base + FMAN_DMA_PLR_OFFSET +
++					 (i / 2) * 4);
++			if (i % 2)
++				liodn_base = plr & FMAN_DMA_LIODN_MASK;
++			else
++				liodn_base = (plr >> FMAN_DMA_LIODN_SHIFT) &
++					     FMAN_DMA_LIODN_MASK;
++
++			if (!liodn_base)
++				continue;
++
++			liodn = liodn_base + offset;
++			if (liodn >= PAACE_NUMBER_ENTRIES)
++				continue;
++
++			/* Skip duplicates — many ports share the same base */
++			if (test_and_set_bit(liodn, seen))
++				continue;
++
++			setup_fman_liodn(liodn);
++			pr_debug("FMan port %d: LIODN %d (base %d + offset %d)\n",
++				 i, liodn, liodn_base, offset);
++		}
++
++		iounmap(base);
++	}
++}
++
+ /* Enable all device LIODNS */
+ static void setup_liodns(void)
+ {
+@@ -492,6 +592,8 @@
+ 			pamu_enable_liodn(liodn);
+ 		}
+ 	}
++
++	setup_fman_liodns();
+ }
+ 
+ static irqreturn_t pamu_av_isr(int irq, void *arg)
