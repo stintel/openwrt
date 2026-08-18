@@ -238,6 +238,19 @@ define Device/linksys_lgs328pc
   DEVICE_PACKAGES += \
 	kmod-hwmon-lm63 \
 	kmod-pse-realtek-mcu-i2c
+  BELKIN_MODEL := BKS-RTL83xx
+  BELKIN_HEADER := 0x07800001
+  LINKSYS_MODEL := 60401070
+  IMAGES += factory.imag
+  IMAGE/factory.imag := \
+	append-kernel | \
+	pad-to 64k | \
+	append-rootfs | \
+	pad-rootfs | \
+	check-size | \
+	append-metadata | \
+	linksys-image | \
+	belkin-header
 endef
 TARGET_DEVICES += linksys_lgs328pc
 
