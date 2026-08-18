@@ -225,6 +225,9 @@ realtek_setup_poe()
 				lan22 lan21 lan20 lan19 lan18 lan17 lan32 lan31 lan30 lan29 lan28 lan27 lan26 lan25 lan40 lan39 lan38 lan37
 				lan36 lan35 lan34 lan33 lan48 lan47 lan46 lan45 lan44 lan43 lan42 lan41"
 		;;
+	linksys,lgs328pc)
+		ucidef_set_poe 250 "$(filter_port_list "$lan_list" "lan25 lan26 lan27 lan28")"
+		;;
 	netgear,gs110tup-v1)
 		ucidef_set_poe 240 "$(filter_port_list "$lan_list" "lan9 lan10")"
 		;;

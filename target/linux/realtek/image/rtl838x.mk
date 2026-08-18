@@ -229,6 +229,18 @@ define Device/linksys_lgs310c
 endef
 TARGET_DEVICES += linksys_lgs310c
 
+define Device/linksys_lgs328pc
+  $(Device/uimage-rt-loader)
+  SOC := rtl8382
+  IMAGE_SIZE := 13504k
+  DEVICE_VENDOR := Linksys
+  DEVICE_MODEL := LGS328PC
+  DEVICE_PACKAGES += \
+	kmod-hwmon-lm63 \
+	kmod-pse-realtek-mcu-i2c
+endef
+TARGET_DEVICES += linksys_lgs328pc
+
 # "NGE" refers to the uImage magic
 define Device/netgear_nge
   $(Device/uimage-rt-loader)
