@@ -187,6 +187,15 @@
 
 #define RTL93XX_CPU_TAG1_IGNORE_STP_MASK	GENMASK(2, 2)
 
+#define RTL931X_CPU_TAG2_SPN			GENMASK(9, 0)
+#define RTL931X_CPU_TAG2_SPN_DEVICE		GENMASK(9, 6)
+#define RTL931X_CPU_TAG2_SPN_PORT		GENMASK(5, 0)
+#define RTL931X_CPU_TAG4_SW_UNIT			GENMASK(11, 8)
+
+#define RTETH_931X_STK_GBL_CTRL			0x1448
+#define RTETH_931X_STK_GBL_CTRL_MY_DEV_ID	GENMASK(7, 4)
+#define RTETH_931X_STACK_MAX_DEVICES		16
+
 struct p_hdr;
 struct dsa_tag;
 struct rteth_ctrl;
@@ -218,8 +227,10 @@ struct rteth_config {
 	int l2_tbl_flush_ctrl;
 	void (*confirm_and_disable_irqs)(struct rteth_ctrl *ctrl, unsigned long *rings, bool *l2);
 	void (*enable_rx_irq)(struct rteth_ctrl *ctrl, int ring);
-	void (*create_tx_header)(struct rteth_frag *frag, unsigned int dest_port, int prio);
+	void (*create_tx_header)(struct rteth_frag *frag, unsigned int dest_device,
+				 unsigned int dest_port, int prio);
 	bool (*decode_tag)(struct rteth_frag *frag, struct dsa_tag *tag);
+	int (*get_cpu_device)(struct rteth_ctrl *ctrl);
 	void (*hw_en_rxtx)(struct rteth_ctrl *ctrl);
 	void (*hw_init)(struct rteth_ctrl *ctrl);
 	void (*hw_stop)(struct rteth_ctrl *ctrl);
