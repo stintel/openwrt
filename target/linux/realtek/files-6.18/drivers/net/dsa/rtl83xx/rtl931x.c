@@ -461,9 +461,11 @@ static int rtldsa_931x_port_rate_police_del(struct dsa_switch *ds, int port,
 void rtldsa_931x_print_matrix(void)
 {
 	struct table_reg *r = rtl_table_get(RTL9310_TBL_2, 1);
+	u32 device = FIELD_GET(RTL931X_STK_GBL_CTRL_MY_DEV_ID,
+			       sw_r32(RTL931X_STK_GBL_CTRL));
 
 	for (int i = 0; i < 64; i++) {
-		rtl_table_read(r, i);
+		rtl_table_read(r, device * 64 + i);
 		pr_debug("> %08x %08x\n", sw_r32(rtl_table_data(r, 0)),
 			 sw_r32(rtl_table_data(r, 1)));
 	}
@@ -549,34 +551,78 @@ static void rtldsa_931x_set_receive_management_action(int port, rma_ctrl_t type,
 	}
 }
 
-/* Enable traffic between a source port and a destination port matrix */
-static void rtl931x_traffic_set(int source, u64 dest_matrix)
+static u32 rtl931x_port_iso_index(u8 device, int port)
+{
+	return device * 64 + port;
+}
+
+static u8 rtl931x_local_device(void)
+{
+	return FIELD_GET(RTL931X_STK_GBL_CTRL_MY_DEV_ID,
+			 sw_r32(RTL931X_STK_GBL_CTRL));
+}
+
+static u64 rtl931x_port_matrix_get(u8 device, int port)
+{
+	struct table_reg *r = rtl_table_get(RTL9310_TBL_2, 1);
+	u64 port_matrix;
+
+	rtl_table_read(r, rtl931x_port_iso_index(device, port));
+	port_matrix = (u64)sw_r32(rtl_table_data(r, 0)) << 25 |
+		      sw_r32(rtl_table_data(r, 1)) >> 7;
+	rtl_table_release(r);
+
+	return port_matrix;
+}
+
+static void rtl931x_port_matrix_set(u8 device, int port, u64 port_matrix)
 {
 	struct table_reg *r = rtl_table_get(RTL9310_TBL_2, 1);
 
-	sw_w32(dest_matrix >> (32 - 7), rtl_table_data(r, 0));
-	sw_w32(dest_matrix << 7, rtl_table_data(r, 1));
-	rtl_table_write(r, source);
+	sw_w32(port_matrix >> 25, rtl_table_data(r, 0));
+	sw_w32(port_matrix << 7, rtl_table_data(r, 1));
+	rtl_table_write(r, rtl931x_port_iso_index(device, port));
 	rtl_table_release(r);
+}
+
+static void rtl931x_stack_port_matrices_copy(u8 from_device, u8 to_device,
+					     int cpu_port)
+{
+	int port;
+
+	if (from_device == to_device)
+		return;
+
+	for (port = 0; port <= cpu_port; port++)
+		rtl931x_port_matrix_set(to_device, port,
+					rtl931x_port_matrix_get(from_device, port));
+}
+
+/* Enable traffic between a source port and a destination port matrix */
+static void rtl931x_traffic_set(int source, u64 dest_matrix)
+{
+	rtl931x_port_matrix_set(rtl931x_local_device(), source, dest_matrix);
 }
 
 static void rtl931x_traffic_enable(int source, int dest)
 {
 	struct table_reg *r = rtl_table_get(RTL9310_TBL_2, 1);
+	u32 index = rtl931x_port_iso_index(rtl931x_local_device(), source);
 
-	rtl_table_read(r, source);
+	rtl_table_read(r, index);
 	sw_w32_mask(0, BIT((dest + 7) % 32), rtl_table_data(r, (dest + 7) / 32 ? 0 : 1));
-	rtl_table_write(r, source);
+	rtl_table_write(r, index);
 	rtl_table_release(r);
 }
 
 static void rtl931x_traffic_disable(int source, int dest)
 {
 	struct table_reg *r = rtl_table_get(RTL9310_TBL_2, 1);
+	u32 index = rtl931x_port_iso_index(rtl931x_local_device(), source);
 
-	rtl_table_read(r, source);
+	rtl_table_read(r, index);
 	sw_w32_mask(BIT((dest + 7) % 32), 0, rtl_table_data(r, (dest + 7) / 32 ? 0 : 1));
-	rtl_table_write(r, source);
+	rtl_table_write(r, index);
 	rtl_table_release(r);
 }
 
@@ -865,6 +911,11 @@ int rtl931x_stack_configure(struct rtl838x_switch_priv *priv, int port,
 
 	if (!enabled) {
 		if (stack->saved_valid) {
+			old_member_id = FIELD_GET(RTL931X_STK_GBL_CTRL_MY_DEV_ID,
+						  stack->saved.global);
+			rtl931x_stack_port_matrices_copy(stack->member_id,
+							 old_member_id,
+							 priv->r->cpu_port);
 			err = rtl931x_stack_restore_registers(&stack->saved);
 			if (err) {
 				NL_SET_ERR_MSG_MOD(extack,
@@ -873,8 +924,6 @@ int rtl931x_stack_configure(struct rtl838x_switch_priv *priv, int port,
 				return err;
 			}
 
-			old_member_id = FIELD_GET(RTL931X_STK_GBL_CTRL_MY_DEV_ID,
-						  stack->saved.global);
 			err = rtl931x_stack_replace_fdb_device(stack->member_id,
 						       old_member_id);
 			if (err) {
@@ -943,14 +992,16 @@ int rtl931x_stack_configure(struct rtl838x_switch_priv *priv, int port,
 	stack->master_id = master_id;
 	stack->flags = flags;
 	stack->enabled = true;
+	old_member_id = FIELD_GET(RTL931X_STK_GBL_CTRL_MY_DEV_ID,
+				  stack->saved.global);
 
 	/* Remove stale paths before assigning identities or a fabric port. */
 	sw_w32_mask(RTL931X_L2_CTRL_STK_AUTO_LRN, 0, RTL931X_L2_CTRL);
 	rtl931x_stack_program_routes(peer_id);
+	rtl931x_stack_port_matrices_copy(old_member_id, member_id,
+					 priv->r->cpu_port);
 	rtl931x_stack_program_identity(member_id, master_id, flags);
 
-	old_member_id = FIELD_GET(RTL931X_STK_GBL_CTRL_MY_DEV_ID,
-				  stack->saved.global);
 	err = rtl931x_stack_replace_fdb_device(old_member_id, member_id);
 	if (err) {
 		NL_SET_ERR_MSG_MOD(extack, "local FDB migration timed out");
@@ -1964,17 +2015,12 @@ static void rtl931x_vlan_port_tag_internal_set(int port)
 		    RTL931X_VLAN_PORT_TAG_CTRL(port));
 }
 
-void rtl931x_stack_bridge_port_save(int port,
-			struct rtl931x_stack_bridge_port_registers *saved)
+void rtl931x_stack_bridge_port_save(u8 device, int port,
+				    struct rtl931x_stack_bridge_port_registers *saved)
 {
-	struct table_reg *r;
 	u32 shift = (port % 10) * 3;
 
-	r = rtl_table_get(RTL9310_TBL_2, 1);
-	rtl_table_read(r, port);
-	saved->port_matrix = (u64)sw_r32(rtl_table_data(r, 0)) << 25 |
-			     sw_r32(rtl_table_data(r, 1)) >> 7;
-	rtl_table_release(r);
+	saved->port_matrix = rtl931x_port_matrix_get(device, port);
 	saved->vlan_igr_ctrl = sw_r32(RTL931X_VLAN_PORT_IGR_CTRL + port * 4);
 	saved->vlan_tag_ctrl = sw_r32(RTL931X_VLAN_PORT_TAG_CTRL(port));
 	saved->learning_ctrl =
@@ -1988,27 +2034,18 @@ void rtl931x_stack_bridge_port_save(int port,
 		sw_r32(RTL931X_RMA_BPDU_CTRL + port / 10 * 4) >> shift);
 }
 
-u64 rtl931x_stack_port_matrix_get(int port)
+u64 rtl931x_stack_port_matrix_get(u8 device, int port)
 {
-	struct table_reg *r;
-	u64 port_matrix;
-
-	r = rtl_table_get(RTL9310_TBL_2, 1);
-	rtl_table_read(r, port);
-	port_matrix = (u64)sw_r32(rtl_table_data(r, 0)) << 25 |
-		      sw_r32(rtl_table_data(r, 1)) >> 7;
-	rtl_table_release(r);
-
-	return port_matrix;
+	return rtl931x_port_matrix_get(device, port);
 }
 
-void rtl931x_stack_port_matrix_set(int port, u64 port_matrix)
+void rtl931x_stack_port_matrix_set(u8 device, int port, u64 port_matrix)
 {
-	rtl931x_traffic_set(port, port_matrix);
+	rtl931x_port_matrix_set(device, port, port_matrix);
 }
 
-void rtl931x_stack_bridge_port_apply(int port, bool fabric, int fabric_port,
-				     int cpu_port)
+void rtl931x_stack_bridge_port_apply(u8 device, int port, bool fabric,
+				     int fabric_port, int cpu_port)
 {
 	rtl931x_vlan_port_pvid_set(port, PBVLAN_TYPE_INNER, 0);
 	rtl931x_vlan_port_pvid_set(port, PBVLAN_TYPE_OUTER, 0);
@@ -2020,22 +2057,25 @@ void rtl931x_stack_bridge_port_apply(int port, bool fabric, int fabric_port,
 	rtl931x_set_igr_filter(port, IGR_DROP);
 	rtl931x_set_egr_filter(port, EGR_ENABLE);
 
-	if (fabric)
+	if (fabric) {
+		rtl931x_port_matrix_set(device, port, BIT_ULL(cpu_port));
 		return;
+	}
 
 	rtldsa_931x_enable_learning(port, false);
 	rtldsa_931x_set_receive_management_action(port, BPDU,
 					     TRAP2MASTERCPU);
-	rtl931x_traffic_set(port, BIT_ULL(cpu_port) | BIT_ULL(fabric_port));
+	rtl931x_port_matrix_set(device, port,
+				BIT_ULL(cpu_port) | BIT_ULL(fabric_port));
 }
 
-void rtl931x_stack_bridge_port_restore(int port,
-			 const struct rtl931x_stack_bridge_port_registers *saved)
+void rtl931x_stack_bridge_port_restore(u8 device, int port,
+				       const struct rtl931x_stack_bridge_port_registers *saved)
 {
 	u32 shift = (port % 10) * 3;
 
 	/* Remove the fabric path before restoring learning and port policy. */
-	rtl931x_traffic_set(port, saved->port_matrix);
+	rtl931x_port_matrix_set(device, port, saved->port_matrix);
 	sw_w32(saved->vlan_igr_ctrl, RTL931X_VLAN_PORT_IGR_CTRL + port * 4);
 	sw_w32(saved->vlan_tag_ctrl, RTL931X_VLAN_PORT_TAG_CTRL(port));
 	sw_w32(saved->learning_ctrl,
