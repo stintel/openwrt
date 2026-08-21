@@ -1327,6 +1327,7 @@ struct rtl931x_stack_context {
 	u8 state;
 	bool registered;
 	bool saved_valid;
+	bool generation_valid;
 	bool enabled;
 };
 
@@ -1540,6 +1541,18 @@ struct rtl838x_switch_priv {
 	 */
 	struct rtldsa_mst msts[];
 };
+
+static inline bool rtl931x_stack_active(struct rtl838x_switch_priv *priv)
+{
+	return priv->family_id == RTL9310_FAMILY_ID &&
+	       priv->stack.enabled;
+}
+
+static inline bool rtl931x_stack_port_active(struct rtl838x_switch_priv *priv,
+					      int port)
+{
+	return rtl931x_stack_active(priv) && priv->stack.port == port;
+}
 
 struct fdb_update_work {
 	struct work_struct work;

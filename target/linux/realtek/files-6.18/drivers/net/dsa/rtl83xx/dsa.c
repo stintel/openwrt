@@ -1426,18 +1426,36 @@ static void rtldsa_update_port_member(struct rtl838x_switch_priv *priv, int port
 		priv->r->traffic_set(port, port_mask);
 }
 
+static int rtldsa_stack_port_guard(struct rtl838x_switch_priv *priv, int port,
+				   struct netlink_ext_ack *extack)
+{
+	lockdep_assert_held(&priv->reg_mutex);
+
+	if (!rtl931x_stack_port_active(priv, port))
+		return 0;
+
+	NL_SET_ERR_MSG_MOD(extack,
+			   "operation is not supported on an active stack port");
+	return -EBUSY;
+}
+
 static int rtldsa_port_bridge_join(struct dsa_switch *ds, int port, struct dsa_bridge bridge,
 				   bool *tx_fwd_offload, struct netlink_ext_ack *extack)
 {
 	struct rtl838x_switch_priv *priv = ds->priv;
 	unsigned int i;
+	int err;
+
+	mutex_lock(&priv->reg_mutex);
+
+	err = rtldsa_stack_port_guard(priv, port, extack);
+	if (err)
+		goto out;
 
 	pr_debug("%s %x: %d", __func__, (u32)priv, port);
 
 	/* reset to default flags for new net_bridge_port */
 	priv->ports[port].isolated = false;
-
-	mutex_lock(&priv->reg_mutex);
 
 	rtldsa_update_port_member(priv, port, bridge.dev, true);
 
@@ -1448,9 +1466,10 @@ static int rtldsa_port_bridge_join(struct dsa_switch *ds, int port, struct dsa_b
 	for (i = 1; i < priv->r->n_mst; i++)
 		rtldsa_port_xstp_state_set(priv, port, BR_STATE_DISABLED, i);
 
+out:
 	mutex_unlock(&priv->reg_mutex);
 
-	return 0;
+	return err;
 }
 
 static void rtldsa_port_bridge_leave(struct dsa_switch *ds, int port, struct dsa_bridge bridge)
@@ -1550,9 +1569,15 @@ static int rtldsa_vlan_filtering(struct dsa_switch *ds, int port,
 				 struct netlink_ext_ack *extack)
 {
 	struct rtl838x_switch_priv *priv = ds->priv;
+	int err;
+
+	mutex_lock(&priv->reg_mutex);
+
+	err = rtldsa_stack_port_guard(priv, port, extack);
+	if (err)
+		goto out;
 
 	pr_debug("%s: port %d\n", __func__, port);
-	mutex_lock(&priv->reg_mutex);
 
 	if (vlan_filtering) {
 		/* Enable ingress and egress filtering
@@ -1580,9 +1605,10 @@ static int rtldsa_vlan_filtering(struct dsa_switch *ds, int port,
 	}
 
 	/* Do we need to do something to the CPU-Port, too? */
+out:
 	mutex_unlock(&priv->reg_mutex);
 
-	return 0;
+	return err;
 }
 
 static int rtldsa_vlan_prepare(struct dsa_switch *ds, int port,
@@ -1630,11 +1656,15 @@ static int rtldsa_vlan_add(struct dsa_switch *ds, int port,
 		return -ENOTSUPP;
 	}
 
+	mutex_lock(&priv->reg_mutex);
+
+	err = rtldsa_stack_port_guard(priv, port, extack);
+	if (err)
+		goto out;
+
 	err = rtldsa_vlan_prepare(ds, port, vlan);
 	if (err)
-		return err;
-
-	mutex_lock(&priv->reg_mutex);
+		goto out;
 
 	/*
 	 * Realtek switches copy frames as-is to/from the CPU. For a proper
@@ -1678,9 +1708,10 @@ static int rtldsa_vlan_add(struct dsa_switch *ds, int port,
 	priv->r->vlan_set_tagged(vlan->vid, &info);
 	pr_debug("Member ports, VLAN %d: %llx\n", vlan->vid, info.member_ports);
 
+out:
 	mutex_unlock(&priv->reg_mutex);
 
-	return 0;
+	return err;
 }
 
 static int rtldsa_vlan_del(struct dsa_switch *ds, int port,
@@ -1688,6 +1719,7 @@ static int rtldsa_vlan_del(struct dsa_switch *ds, int port,
 {
 	struct rtl838x_vlan_info info;
 	struct rtl838x_switch_priv *priv = ds->priv;
+	int err = 0;
 	u16 pvid;
 
 	pr_debug("%s: port %d, vid %d, flags %x\n",
@@ -1703,6 +1735,12 @@ static int rtldsa_vlan_del(struct dsa_switch *ds, int port,
 	}
 
 	mutex_lock(&priv->reg_mutex);
+
+	if (rtl931x_stack_port_active(priv, port)) {
+		err = -EBUSY;
+		goto out;
+	}
+
 	pvid = priv->ports[port].pvid;
 
 	/* Reset to default if removing the current PVID */
@@ -1731,9 +1769,10 @@ static int rtldsa_vlan_del(struct dsa_switch *ds, int port,
 	priv->r->vlan_set_tagged(vlan->vid, &info);
 	pr_debug("Member ports, VLAN %d: %llx\n", vlan->vid, info.member_ports);
 
+out:
 	mutex_unlock(&priv->reg_mutex);
 
-	return 0;
+	return err;
 }
 
 void rtldsa_port_fast_age(struct dsa_switch *ds, int port)
@@ -1934,7 +1973,16 @@ static int rtldsa_port_fdb_add(struct dsa_switch *ds, int port,
 	struct rtl838x_l2_entry e;
 	int err = 0, idx;
 	u64 seed = priv->r->l2_hash_seed(mac, vid);
-	int lag_group = rtldsa_find_lag_group_from_port(priv, port);
+	int lag_group;
+
+	mutex_lock(&priv->reg_mutex);
+
+	if (rtl931x_stack_port_active(priv, port)) {
+		err = -EBUSY;
+		goto out;
+	}
+
+	lag_group = rtldsa_find_lag_group_from_port(priv, port);
 
 	if (lag_group >= 0 && priv->r->prepare_lag_fdb) {
 		priv->r->prepare_lag_fdb(&e, lag_group);
@@ -1942,11 +1990,9 @@ static int rtldsa_port_fdb_add(struct dsa_switch *ds, int port,
 		if (priv->lag_non_primary & BIT_ULL(port)) {
 			pr_debug("%s: %d is lag slave but prepare_lag_fdb is not supported. ignore\n",
 				 __func__, port);
-			return 0;
+			goto out;
 		}
 	}
-
-	mutex_lock(&priv->reg_mutex);
 
 	idx = rtldsa_find_l2_hash_entry(priv, seed, false, &e);
 
@@ -1985,14 +2031,21 @@ static int rtldsa_port_fdb_del(struct dsa_switch *ds, int port,
 	struct rtl838x_l2_entry e;
 	int err = 0, idx;
 	u64 seed = priv->r->l2_hash_seed(mac, vid);
-	int lag_group = rtldsa_find_lag_group_from_port(priv, port);
+	int lag_group;
+
+	mutex_lock(&priv->reg_mutex);
+
+	if (rtl931x_stack_port_active(priv, port)) {
+		err = -EBUSY;
+		goto out;
+	}
+
+	lag_group = rtldsa_find_lag_group_from_port(priv, port);
 
 	if (lag_group >= 0 && priv->r->prepare_lag_fdb)
 		priv->r->prepare_lag_fdb(&e, lag_group);
 
 	pr_debug("In %s, mac %llx, vid: %d\n", __func__, mac, vid);
-
-	mutex_lock(&priv->reg_mutex);
 
 	idx = rtldsa_find_l2_hash_entry(priv, seed, true, &e);
 
@@ -2109,11 +2162,6 @@ static int rtldsa_83xx_port_mdb_add(struct dsa_switch *ds, int port,
 
 	pr_debug("In %s port %d, mac %llx, vid: %d\n", __func__, port, mac, vid);
 
-	if (priv->lag_non_primary & BIT_ULL(port)) {
-		pr_debug("%s: %d is lag slave. ignore\n", __func__, port);
-		return -EINVAL;
-	}
-
 	if (rtldsa_mac_is_unsnoop(mdb->addr)) {
 		dev_dbg(priv->dev,
 			"%s: %pM might belong to an unsnoopable IP. ignore\n",
@@ -2122,6 +2170,17 @@ static int rtldsa_83xx_port_mdb_add(struct dsa_switch *ds, int port,
 	}
 
 	mutex_lock(&priv->reg_mutex);
+
+	if (rtl931x_stack_port_active(priv, port)) {
+		err = -EBUSY;
+		goto out;
+	}
+
+	if (priv->lag_non_primary & BIT_ULL(port)) {
+		pr_debug("%s: %d is lag slave. ignore\n", __func__, port);
+		err = -EINVAL;
+		goto out;
+	}
 
 	idx = rtldsa_find_l2_hash_entry(priv, seed, false, &e);
 
@@ -2195,11 +2254,6 @@ static int rtldsa_port_mdb_del(struct dsa_switch *ds, int port,
 
 	pr_debug("In %s, port %d, mac %llx, vid: %d\n", __func__, port, mac, vid);
 
-	if (priv->lag_non_primary & BIT_ULL(port)) {
-		pr_info("%s: %d is lag slave. ignore\n", __func__, port);
-		return 0;
-	}
-
 	if (rtldsa_mac_is_unsnoop(mdb->addr)) {
 		dev_dbg(priv->dev,
 			"%s: %pM might belong to an unsnoopable IP. ignore\n",
@@ -2208,6 +2262,16 @@ static int rtldsa_port_mdb_del(struct dsa_switch *ds, int port,
 	}
 
 	mutex_lock(&priv->reg_mutex);
+
+	if (rtl931x_stack_port_active(priv, port)) {
+		err = -EBUSY;
+		goto out;
+	}
+
+	if (priv->lag_non_primary & BIT_ULL(port)) {
+		pr_info("%s: %d is lag slave. ignore\n", __func__, port);
+		goto out;
+	}
 
 	idx = rtldsa_find_l2_hash_entry(priv, seed, true, &e);
 
@@ -2258,6 +2322,13 @@ static int rtldsa_port_mirror_add(struct dsa_switch *ds, int port,
 	pr_debug("In %s\n", __func__);
 
 	mutex_lock(&priv->reg_mutex);
+
+	err = rtldsa_stack_port_guard(priv, port, extack);
+	if (err)
+		goto out_unlock;
+	err = rtldsa_stack_port_guard(priv, mirror->to_local_port, extack);
+	if (err)
+		goto out_unlock;
 
 	for (group = 0; group < 4; group++) {
 		if (priv->mirror_group_ports[group] == mirror->to_local_port)
@@ -2353,6 +2424,13 @@ static int rtldsa_port_pre_bridge_flags(struct dsa_switch *ds, int port,
 {
 	struct rtl838x_switch_priv *priv = ds->priv;
 	unsigned long features = BR_ISOLATED;
+	int err;
+
+	mutex_lock(&priv->reg_mutex);
+	err = rtldsa_stack_port_guard(priv, port, extack);
+	mutex_unlock(&priv->reg_mutex);
+	if (err)
+		return err;
 
 	pr_debug("%s: %d %lX\n", __func__, port, flags.val);
 	if (priv->r->enable_learning)
@@ -2374,6 +2452,12 @@ static int rtldsa_port_bridge_flags(struct dsa_switch *ds, int port,
 				    struct netlink_ext_ack *extack)
 {
 	struct rtl838x_switch_priv *priv = ds->priv;
+	int err;
+
+	mutex_lock(&priv->reg_mutex);
+	err = rtldsa_stack_port_guard(priv, port, extack);
+	if (err)
+		goto out;
 
 	pr_debug("%s: %d %lX\n", __func__, port, flags.val);
 	if (priv->r->enable_learning && (flags.mask & BR_LEARNING))
@@ -2394,12 +2478,13 @@ static int rtldsa_port_bridge_flags(struct dsa_switch *ds, int port,
 
 		priv->ports[port].isolated = !!(flags.val & BR_ISOLATED);
 
-		mutex_lock(&priv->reg_mutex);
 		rtldsa_update_port_member(priv, port, bridge_dev, true);
-		mutex_unlock(&priv->reg_mutex);
 	}
 
-	return 0;
+out:
+	mutex_unlock(&priv->reg_mutex);
+
+	return err;
 }
 
 static bool rtldsa_83xx_lag_can_offload(struct dsa_switch *ds,
@@ -2463,6 +2548,13 @@ static int rtldsa_port_lag_join(struct dsa_switch *ds,
 		return -EOPNOTSUPP;
 
 	mutex_lock(&priv->reg_mutex);
+
+	if (rtl931x_stack_active(priv)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "LAG offload is unavailable while stacking is active");
+		err = -EBUSY;
+		goto out;
+	}
 
 	if (port >= priv->r->cpu_port) {
 		err = -EINVAL;
@@ -2597,6 +2689,11 @@ static int rtldsa_cls_flower_add(struct dsa_switch *ds, int port,
 		return -EOPNOTSUPP;
 
 	mutex_lock(&priv->reg_mutex);
+
+	if (rtl931x_stack_port_active(priv, port)) {
+		ret = -EBUSY;
+		goto unlock;
+	}
 
 	/* only allow one offloaded police for ingress/egress */
 	if (ingress && p->rate_police_ingress) {
