@@ -1330,6 +1330,8 @@ struct rtl931x_stack_peer_reply {
 	u8 mode;
 };
 
+#define RTL931X_STACK_RPC_MAX_BODY_LEN	64
+
 struct rtl931x_stack_context {
 	struct list_head list;
 	struct rtl931x_stack_registers saved;
@@ -1346,9 +1348,14 @@ struct rtl931x_stack_context {
 	struct completion talk_reply_completion;
 	struct rtl931x_stack_peer_reply talk_reply;
 	u64 talk_boot_nonce;
+	u64 talk_peer_boot_nonce;
 	u64 talk_pending_transaction;
 	u64 talk_pending_started_ns;
 	u32 talk_verified_carrier_changes;
+	u8 talk_rpc_reply[RTL931X_STACK_RPC_MAX_BODY_LEN];
+	u16 talk_pending_opcode;
+	u16 talk_rpc_reply_len;
+	u16 talk_rpc_result;
 	u8 talk_pending_mode;
 	u8 talk_pending_port;
 	u8 talk_pending_peer;
@@ -1368,6 +1375,8 @@ struct rtl931x_stack_context {
 	bool enabled;
 	bool talk_armed;
 	bool talk_pending;
+	bool talk_pending_rpc;
+	bool talk_peer_valid;
 };
 
 struct rtl83xx_flow {
