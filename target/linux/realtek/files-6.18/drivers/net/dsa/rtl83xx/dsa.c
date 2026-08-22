@@ -475,8 +475,10 @@ static void rtldsa_93xx_phylink_mac_link_down(struct phylink_config *config,
 	int err;
 	u32 v = 0;
 
-	if (priv->family_id == RTL9310_FAMILY_ID)
+	if (priv->family_id == RTL9310_FAMILY_ID) {
 		rtl931x_stack_reps_link_change(priv, port, false);
+		rtl931x_stack_cpu_update(priv);
+	}
 
 	/* Stop TX/RX to port */
 	sw_w32_mask(0x3, 0, priv->r->mac_port_ctrl(port));
@@ -732,8 +734,10 @@ static void rtldsa_93xx_phylink_mac_link_up(struct phylink_config *config,
 		}
 	}
 
-	if (priv->family_id == RTL9310_FAMILY_ID)
+	if (priv->family_id == RTL9310_FAMILY_ID) {
 		rtl931x_stack_reps_link_change(priv, port, true);
+		rtl931x_stack_cpu_update(priv);
+	}
 }
 
 static bool rtldsa_read_mib_item(struct rtl838x_switch_priv *priv, int port,
